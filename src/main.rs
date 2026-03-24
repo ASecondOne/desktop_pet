@@ -106,6 +106,7 @@ fn print_startup(socket_path: &Path) -> Result<(), Box<dyn Error>> {
     println!("default mode mirrors stdout/stderr for ordinary commands and leaves interactive ones alone");
     println!("optional: export DESKTOP_PET_CAPTURE_OUTPUT=off for strict low-impact mode");
     println!("optional: export DESKTOP_PET_CAPTURE_OUTPUT=always to mirror stdout/stderr for every command");
+    println!("set DESKTOP_PET_SOCKET before sourcing; changing it later reroutes following commands");
 
     if socket_path != default_socket_path() {
         println!("and set the socket before sourcing:");

@@ -2,8 +2,13 @@
 
 [[ -o interactive ]] || return 0
 
+autoload -Uz add-zsh-hook
+
 if [[ -n ${DESKTOP_PET_HOOK_INSTALLED:-} ]]; then
-  return 0
+  add-zsh-hook -d preexec __desktop_pet_preexec 2>/dev/null || true
+  add-zsh-hook -d precmd __desktop_pet_precmd 2>/dev/null || true
+  add-zsh-hook -d zshexit __desktop_pet_zshexit 2>/dev/null || true
+  add-zsh-hook -d zshaddhistory __desktop_pet_history_filter 2>/dev/null || true
 fi
 
 typeset -g DESKTOP_PET_HOOK_INSTALLED=1
@@ -11,13 +16,12 @@ typeset -g DESKTOP_PET_HOOK_DIR=${${(%):-%N}:A:h}
 typeset -g DESKTOP_PET_SOCKET=${DESKTOP_PET_SOCKET:-/tmp/desktop_pet_${USER}.sock}
 typeset -g DESKTOP_PET_SENDER=${DESKTOP_PET_SENDER:-$DESKTOP_PET_HOOK_DIR/desktop_pet_send.py}
 typeset -g DESKTOP_PET_PTY_RUNNER=${DESKTOP_PET_PTY_RUNNER:-$DESKTOP_PET_HOOK_DIR/desktop_pet_pty.py}
-typeset -g DESKTOP_PET_CAPTURE_OUTPUT=${DESKTOP_PET_CAPTURE_OUTPUT:-smart}
+typeset -g DESKTOP_PET_CAPTURE_OUTPUT=${DESKTOP_PET_CAPTURE_OUTPUT:-${DESKTOP_PET_CAPTURE_OUT:-smart}}
 typeset -g DESKTOP_PET_ACTIVE_COMMAND_ID=""
 typeset -g DESKTOP_PET_ACTIVE_COMMAND=""
 typeset -g DESKTOP_PET_ACTIVE_TTY="unknown"
 typeset -g DESKTOP_PET_ACTIVE_CWD=""
-
-autoload -Uz add-zsh-hook
+typeset -g DESKTOP_PET_ACTIVE_SOCKET=""
 
 __desktop_pet_send() {
   emulate -L zsh
@@ -30,14 +34,17 @@ __desktop_pet_send() {
   local exit_code="$6"
   local tty_value="$7"
   local cwd_value="$8"
+  local socket_path="$9"
 
-  [[ -S $DESKTOP_PET_SOCKET ]] || return 0
+  [[ -n $socket_path ]] || socket_path="$DESKTOP_PET_SOCKET"
+
+  [[ -S $socket_path ]] || return 0
   command -v python3 >/dev/null 2>&1 || return 0
   [[ -f $DESKTOP_PET_SENDER ]] || return 0
 
   local -a args
   args=(
-    --socket "$DESKTOP_PET_SOCKET"
+    --socket "$socket_path"
     --kind "$kind"
     --command-id "$command_id"
     --shell-pid "$$"
@@ -104,7 +111,7 @@ __desktop_pet_should_capture_output() {
   subcommand="${words[2]:-}"
 
   case "$program" in
-    __desktop_pet_exec|.|source|eval|exec|exit|logout|suspend|cd|pushd|popd|dirs|fg|bg|jobs|wait|disown|history|fc|alias|unalias|bindkey|zle|trap|stty|reset|clear|tput)
+    __desktop_pet_exec|.|source|eval|exec|exit|logout|suspend|cd|pushd|popd|dirs|fg|bg|jobs|wait|disown|history|fc|alias|unalias|bindkey|zle|trap|stty|reset|clear|tput|export|set|setopt|unsetopt|typeset|local|declare|readonly|unset|unfunction|functions|autoload|rehash|hash)
       return 1
       ;;
     vim|nvim|vi|view|nano|emacs|less|more|most|man|top|htop|btop|btm|watch|fzf|fzf-tmux|ssh|sftp|mosh|tmux|screen|ranger|mc|lazygit|tig|k9s|kubectl|helm)
@@ -166,10 +173,6 @@ __desktop_pet_should_use_pty_capture() {
   return 0
 }
 
-__desktop_pet_set_last_status() {
-  return "$1"
-}
-
 __desktop_pet_run_preexec_hooks() {
   emulate -L zsh
 
@@ -187,25 +190,6 @@ __desktop_pet_run_preexec_hooks() {
   done
 }
 
-__desktop_pet_run_precmd_hooks() {
-  emulate -L zsh
-
-  local exit_status="$1"
-  local hook
-
-  if (( $+functions[precmd] )); then
-    __desktop_pet_set_last_status "$exit_status"
-    precmd || true
-  fi
-
-  for hook in "${precmd_functions[@]}"; do
-    [[ $hook == __desktop_pet_precmd ]] && continue
-    (( $+functions[$hook] )) || continue
-    __desktop_pet_set_last_status "$exit_status"
-    "$hook" || true
-  done
-}
-
 __desktop_pet_clear_active_command() {
   emulate -L zsh
 
@@ -213,6 +197,7 @@ __desktop_pet_clear_active_command() {
   typeset -g DESKTOP_PET_ACTIVE_COMMAND=""
   typeset -g DESKTOP_PET_ACTIVE_TTY="unknown"
   typeset -g DESKTOP_PET_ACTIVE_CWD=""
+  typeset -g DESKTOP_PET_ACTIVE_SOCKET=""
 }
 
 __desktop_pet_pipe() {
@@ -223,6 +208,7 @@ __desktop_pet_pipe() {
   local command="$3"
   local tty_value="$4"
   local cwd_value="$5"
+  local socket_path="$6"
   local line
 
   while IFS= read -r line || [[ -n $line ]]; do
@@ -234,18 +220,25 @@ __desktop_pet_pipe() {
       print -r -- "$line"
     fi
 
-    __desktop_pet_send output "$command_id" "$command" "$stream" "$line" "" "$tty_value" "$cwd_value"
+    __desktop_pet_send output "$command_id" "$command" "$stream" "$line" "" "$tty_value" "$cwd_value" "$socket_path"
   done
 }
 
 __desktop_pet_exec() {
   emulate -L zsh
+  setopt local_options no_monitor
 
   local command="$1"
   local tty_value
   local cwd_value="$PWD"
   local command_id="${EPOCHREALTIME:-$SECONDS}:$$:$RANDOM"
+  local socket_path="$DESKTOP_PET_SOCKET"
   local exit_status
+  local capture_dir=""
+  local stdout_fifo=""
+  local stderr_fifo=""
+  local stdout_pid=""
+  local stderr_pid=""
 
   [[ -z ${command//[[:space:]]/} ]] && return 0
 
@@ -253,23 +246,41 @@ __desktop_pet_exec() {
   [[ $tty_value == /dev/* ]] || tty_value=$(tty < /dev/tty 2>/dev/null)
   [[ -n $tty_value ]] || tty_value="unknown"
 
-  __desktop_pet_send start "$command_id" "$command" "" "" "" "$tty_value" "$cwd_value"
+  __desktop_pet_send start "$command_id" "$command" "" "" "" "$tty_value" "$cwd_value" "$socket_path"
 
   if __desktop_pet_should_use_pty_capture "$command"; then
     python3 "$DESKTOP_PET_PTY_RUNNER" \
       --shell "${SHELL:-/bin/sh}" \
       --command "$command" \
-      | __desktop_pet_pipe pty "$command_id" "$command" "$tty_value" "$cwd_value"
+      | __desktop_pet_pipe pty "$command_id" "$command" "$tty_value" "$cwd_value" "$socket_path"
     exit_status=${pipestatus[1]}
   else
+    capture_dir=$(mktemp -d "${TMPDIR:-/tmp}/desktop_pet.XXXXXX") || return 1
+    stdout_fifo="$capture_dir/stdout"
+    stderr_fifo="$capture_dir/stderr"
+
+    if ! mkfifo "$stdout_fifo" "$stderr_fifo"; then
+      command rmdir -- "$capture_dir" 2>/dev/null || true
+      return 1
+    fi
+
+    __desktop_pet_pipe stdout "$command_id" "$command" "$tty_value" "$cwd_value" "$socket_path" < "$stdout_fifo" &
+    stdout_pid=$!
+    __desktop_pet_pipe stderr "$command_id" "$command" "$tty_value" "$cwd_value" "$socket_path" < "$stderr_fifo" &
+    stderr_pid=$!
+
     {
       eval "$command"
-    } > >(__desktop_pet_pipe stdout "$command_id" "$command" "$tty_value" "$cwd_value") \
-      2> >(__desktop_pet_pipe stderr "$command_id" "$command" "$tty_value" "$cwd_value")
+    } > "$stdout_fifo" 2> "$stderr_fifo"
     exit_status=$?
+
+    wait "$stdout_pid"
+    wait "$stderr_pid"
+    command rm -f -- "$stdout_fifo" "$stderr_fifo"
+    command rmdir -- "$capture_dir" 2>/dev/null || true
   fi
 
-  __desktop_pet_send finish "$command_id" "$command" "" "" "$exit_status" "$tty_value" "$cwd_value"
+  __desktop_pet_send finish "$command_id" "$command" "" "" "$exit_status" "$tty_value" "$cwd_value" "$socket_path"
   return "$exit_status"
 }
 
@@ -280,6 +291,7 @@ __desktop_pet_preexec() {
   local tty_value
   local cwd_value="$PWD"
   local command_id="${EPOCHREALTIME:-$SECONDS}:$$:$RANDOM"
+  local socket_path="$DESKTOP_PET_SOCKET"
 
   [[ -z ${command//[[:space:]]/} ]] && return 0
   [[ $command == __desktop_pet_exec\ * ]] && return 0
@@ -292,8 +304,9 @@ __desktop_pet_preexec() {
   typeset -g DESKTOP_PET_ACTIVE_COMMAND="$command"
   typeset -g DESKTOP_PET_ACTIVE_TTY="$tty_value"
   typeset -g DESKTOP_PET_ACTIVE_CWD="$cwd_value"
+  typeset -g DESKTOP_PET_ACTIVE_SOCKET="$socket_path"
 
-  __desktop_pet_send start "$command_id" "$command" "" "" "" "$tty_value" "$cwd_value"
+  __desktop_pet_send start "$command_id" "$command" "" "" "" "$tty_value" "$cwd_value" "$socket_path"
   return 0
 }
 
@@ -302,6 +315,7 @@ __desktop_pet_precmd() {
   emulate -L zsh
 
   local command_id="$DESKTOP_PET_ACTIVE_COMMAND_ID"
+  local socket_path="$DESKTOP_PET_ACTIVE_SOCKET"
 
   [[ -n $command_id ]] || return 0
 
@@ -312,7 +326,8 @@ __desktop_pet_precmd() {
     "" \
     "$exit_status" \
     "$DESKTOP_PET_ACTIVE_TTY" \
-    "$DESKTOP_PET_ACTIVE_CWD"
+    "$DESKTOP_PET_ACTIVE_CWD" \
+    "$socket_path"
 
   __desktop_pet_clear_active_command
   return 0
@@ -323,6 +338,7 @@ __desktop_pet_zshexit() {
   emulate -L zsh
 
   local command_id="$DESKTOP_PET_ACTIVE_COMMAND_ID"
+  local socket_path="$DESKTOP_PET_ACTIVE_SOCKET"
 
   [[ -n $command_id ]] || return 0
 
@@ -333,7 +349,8 @@ __desktop_pet_zshexit() {
     "" \
     "$exit_status" \
     "$DESKTOP_PET_ACTIVE_TTY" \
-    "$DESKTOP_PET_ACTIVE_CWD"
+    "$DESKTOP_PET_ACTIVE_CWD" \
+    "$socket_path"
 
   __desktop_pet_clear_active_command
   return 0
@@ -368,9 +385,6 @@ __desktop_pet_accept_line() {
   CURSOR=0
   __desktop_pet_exec "$command"
   exit_status=$?
-  __desktop_pet_run_precmd_hooks "$exit_status"
-  __desktop_pet_set_last_status "$exit_status"
-  zle reset-prompt
   return "$exit_status"
 }
 
