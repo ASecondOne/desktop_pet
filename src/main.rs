@@ -53,10 +53,6 @@ where
                 };
                 socket_path = PathBuf::from(path);
             }
-            "--help" | "-h" => {
-                print_help();
-                std::process::exit(0);
-            }
             other => {
                 return Err(format!("unknown argument: {other}").into());
             }
@@ -64,13 +60,6 @@ where
     }
 
     Ok(socket_path)
-}
-
-fn print_help() {
-    println!("desktop_pet");
-    println!();
-    println!("Usage:");
-    println!("  cargo run -- [--socket /tmp/desktop_pet_$USER.sock]");
 }
 
 fn default_socket_path() -> PathBuf {
@@ -114,6 +103,9 @@ fn print_startup(socket_path: &Path) -> Result<(), Box<dyn Error>> {
     println!("listening on {}", socket_path.display());
     println!("source this in every zsh terminal you want to mirror:");
     println!("  source {}", hook_path.display());
+    println!("default mode mirrors stdout/stderr for ordinary commands and leaves interactive ones alone");
+    println!("optional: export DESKTOP_PET_CAPTURE_OUTPUT=off for strict low-impact mode");
+    println!("optional: export DESKTOP_PET_CAPTURE_OUTPUT=always to mirror stdout/stderr for every command");
 
     if socket_path != default_socket_path() {
         println!("and set the socket before sourcing:");
