@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -6,6 +6,30 @@ use std::io::{BufRead, BufReader};
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+
+mod handle_event;
+
+use handle_event::HookEvent;
+use handle_event::PetResponce;
+
+static DEBUG: bool = false;
+
+struct SocketGuard {
+    path: PathBuf,
+}
+
+impl Drop for SocketGuard {
+    fn drop(&mut self) {
+        if let Err(error) = fs::remove_file(&self.path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            eprintln!(
+                "desktop_pet: failed to remove socket {}: {error}",
+                self.path.display()
+            );
+        }
+    }
+}
 
 fn main() {
     if let Err(error) = run() {
@@ -17,6 +41,7 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let socket_path = parse_socket_path(env::args_os().skip(1))?;
     prepare_socket_path(&socket_path)?;
+    let mut pending_events: HashMap<String, Vec<HookEvent>> = HashMap::new();
 
     let listener = UnixListener::bind(&socket_path)?;
     let _socket_guard = SocketGuard {
@@ -28,7 +53,7 @@ fn run() -> Result<(), Box<dyn Error>> {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                if let Err(error) = handle_client(stream) {
+                if let Err(error) = handle_client(stream, &mut pending_events) {
                     eprintln!("desktop_pet: failed to read an event: {error}");
                 }
             }
@@ -103,10 +128,16 @@ fn print_startup(socket_path: &Path) -> Result<(), Box<dyn Error>> {
     println!("listening on {}", socket_path.display());
     println!("source this in every zsh terminal you want to mirror:");
     println!("  source {}", hook_path.display());
-    println!("default mode mirrors stdout/stderr for ordinary commands and leaves interactive ones alone");
+    println!(
+        "default mode mirrors stdout/stderr for ordinary commands and leaves interactive ones alone"
+    );
     println!("optional: export DESKTOP_PET_CAPTURE_OUTPUT=off for strict low-impact mode");
-    println!("optional: export DESKTOP_PET_CAPTURE_OUTPUT=always to mirror stdout/stderr for every command");
-    println!("set DESKTOP_PET_SOCKET before sourcing; changing it later reroutes following commands");
+    println!(
+        "optional: export DESKTOP_PET_CAPTURE_OUTPUT=always to mirror stdout/stderr for every command"
+    );
+    println!(
+        "set DESKTOP_PET_SOCKET before sourcing; changing it later reroutes following commands"
+    );
 
     if socket_path != default_socket_path() {
         println!("and set the socket before sourcing:");
@@ -117,7 +148,10 @@ fn print_startup(socket_path: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn handle_client(stream: UnixStream) -> Result<(), Box<dyn Error>> {
+fn handle_client(
+    stream: UnixStream,
+    pending_events: &mut HashMap<String, Vec<HookEvent>>,
+) -> Result<(), Box<dyn Error>> {
     let reader = BufReader::new(stream);
 
     for line in reader.lines() {
@@ -127,76 +161,27 @@ fn handle_client(stream: UnixStream) -> Result<(), Box<dyn Error>> {
         }
 
         match serde_json::from_str::<HookEvent>(&line) {
-            Ok(event) => print_event(&event),
+            Ok(event) => {
+                if DEBUG {
+                    HookEvent::print_event_debug(&event);
+                }
+
+                let command_id = event.command_id().to_owned();
+                let is_finish = event.is_finish();
+
+                pending_events
+                    .entry(command_id.clone())
+                    .or_default()
+                    .push(event);
+
+                if is_finish && let Some(events) = pending_events.remove(&command_id) {
+                    let res = PetResponce::new(events);
+                    println!("{}", res.show());
+                }
+            }
             Err(error) => eprintln!("desktop_pet: invalid event payload: {error}"),
         }
     }
 
     Ok(())
-}
-
-fn print_event(event: &HookEvent) {
-    let tty_label = event.tty.strip_prefix("/dev/").unwrap_or(&event.tty);
-
-    match event.kind {
-        HookKind::Start => {
-            println!(
-                "[{}] [{}:{}] $ {}    ({})",
-                event.timestamp, tty_label, event.shell_pid, event.command, event.cwd
-            );
-        }
-        HookKind::Output => {
-            let stream = event.stream.as_deref().unwrap_or("stdout");
-            let text = event.text.as_deref().unwrap_or("");
-            println!(
-                "[{}] [{}:{}:{}] {}",
-                event.timestamp, tty_label, event.shell_pid, stream, text
-            );
-        }
-        HookKind::Finish => {
-            let exit_code = event.exit_code.unwrap_or_default();
-            println!(
-                "[{}] [{}:{}] exit {}    {}",
-                event.timestamp, tty_label, event.shell_pid, exit_code, event.command
-            );
-        }
-    }
-}
-
-struct SocketGuard {
-    path: PathBuf,
-}
-
-impl Drop for SocketGuard {
-    fn drop(&mut self) {
-        if let Err(error) = fs::remove_file(&self.path)
-            && error.kind() != std::io::ErrorKind::NotFound
-        {
-            eprintln!(
-                "desktop_pet: failed to remove socket {}: {error}",
-                self.path.display()
-            );
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-struct HookEvent {
-    timestamp: String,
-    shell_pid: u32,
-    tty: String,
-    cwd: String,
-    command: String,
-    kind: HookKind,
-    stream: Option<String>,
-    text: Option<String>,
-    exit_code: Option<i32>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum HookKind {
-    Start,
-    Output,
-    Finish,
 }
