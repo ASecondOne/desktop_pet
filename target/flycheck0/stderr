@@ -1,12 +1,88 @@
-   0.083600887s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint: stale: changed "/home/anotherone/Documents/Stuff with RUST/desktop_pet/src/handle_event.rs"
-   0.083612577s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint:           (vs) "/home/anotherone/Documents/Stuff with RUST/desktop_pet/target/debug/.fingerprint/desktop_pet-cdb29d4abd50227f/dep-bin-desktop_pet"
-   0.083615782s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1774450376, nanos: 376823976 } < FileTime { seconds: 1774450622, nanos: 690949059 }
-   0.083646774s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint: fingerprint dirty for desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet)/Check { test: false }/TargetInner { name: "desktop_pet", doc: true, ..: with_path("/home/anotherone/Documents/Stuff with RUST/desktop_pet/src/main.rs", Edition2024) }
-   0.083654206s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/anotherone/Documents/Stuff with RUST/desktop_pet/target/debug/.fingerprint/desktop_pet-cdb29d4abd50227f/dep-bin-desktop_pet", reference_mtime: FileTime { seconds: 1774450376, nanos: 376823976 }, stale: "/home/anotherone/Documents/Stuff with RUST/desktop_pet/src/handle_event.rs", stale_mtime: FileTime { seconds: 1774450622, nanos: 690949059 } }))
-   0.085038245s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint: stale: changed "/home/anotherone/Documents/Stuff with RUST/desktop_pet/src/handle_event.rs"
-   0.085045647s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint:           (vs) "/home/anotherone/Documents/Stuff with RUST/desktop_pet/target/debug/.fingerprint/desktop_pet-baa09555f375e2da/dep-test-bin-desktop_pet"
-   0.085048532s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1774450376, nanos: 376823976 } < FileTime { seconds: 1774450622, nanos: 690949059 }
-   0.085069857s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint: fingerprint dirty for desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet)/Check { test: true }/TargetInner { name: "desktop_pet", doc: true, ..: with_path("/home/anotherone/Documents/Stuff with RUST/desktop_pet/src/main.rs", Edition2024) }
-   0.085075116s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/anotherone/Documents/Stuff with RUST/desktop_pet/target/debug/.fingerprint/desktop_pet-baa09555f375e2da/dep-test-bin-desktop_pet", reference_mtime: FileTime { seconds: 1774450376, nanos: 376823976 }, stale: "/home/anotherone/Documents/Stuff with RUST/desktop_pet/src/handle_event.rs", stale_mtime: FileTime { seconds: 1774450622, nanos: 690949059 } }))
+   0.022350615s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint: fingerprint error for desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet)/Check { test: false }/TargetInner { name: "desktop_pet", doc: true, ..: with_path("/home/anotherone/Documents/Stuff with RUST/desktop_pet/src/main.rs", Edition2024) }
+   0.022374097s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/anotherone/Documents/Stuff with RUST/desktop_pet/target/debug/.fingerprint/desktop_pet-05edef7e439d8b35/bin-desktop_pet`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: <&dyn core::ops::function::Fn<(), Output = i32> + core::panic::unwind_safe::RefUnwindSafe + core::marker::Sync as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call::<&dyn core::ops::function::Fn<(), Output = i32> + core::panic::unwind_safe::RefUnwindSafe + core::marker::Sync, i32>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panicking.rs:581:40
+  16: std::panicking::catch_unwind::<i32, &dyn core::ops::function::Fn<(), Output = i32> + core::panic::unwind_safe::RefUnwindSafe + core::marker::Sync>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panicking.rs:544:19
+  17: std::panic::catch_unwind::<&dyn core::ops::function::Fn<(), Output = i32> + core::panic::unwind_safe::RefUnwindSafe + core::marker::Sync, i32>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{closure#0}
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call::<std::rt::lang_start_internal::{closure#0}, isize>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panicking.rs:581:40
+  20: std::panicking::catch_unwind::<isize, std::rt::lang_start_internal::{closure#0}>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panicking.rs:544:19
+  21: std::panic::catch_unwind::<std::rt::lang_start_internal::{closure#0}, isize>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/rt.rs:171:5
+  23: main
+  24: <unknown>
+  25: __libc_start_main
+  26: <unknown>
+   0.030061143s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint: fingerprint error for desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet)/Check { test: true }/TargetInner { name: "desktop_pet", doc: true, ..: with_path("/home/anotherone/Documents/Stuff with RUST/desktop_pet/src/main.rs", Edition2024) }
+   0.030078324s  INFO prepare_target{force=false package_id=desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet) target="desktop_pet"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/anotherone/Documents/Stuff with RUST/desktop_pet/target/debug/.fingerprint/desktop_pet-1bd61cd29f6c91bb/test-bin-desktop_pet`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: <&dyn core::ops::function::Fn<(), Output = i32> + core::panic::unwind_safe::RefUnwindSafe + core::marker::Sync as core::ops::function::FnOnce<()>>::call_once
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call::<&dyn core::ops::function::Fn<(), Output = i32> + core::panic::unwind_safe::RefUnwindSafe + core::marker::Sync, i32>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panicking.rs:581:40
+  16: std::panicking::catch_unwind::<i32, &dyn core::ops::function::Fn<(), Output = i32> + core::panic::unwind_safe::RefUnwindSafe + core::marker::Sync>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panicking.rs:544:19
+  17: std::panic::catch_unwind::<&dyn core::ops::function::Fn<(), Output = i32> + core::panic::unwind_safe::RefUnwindSafe + core::marker::Sync, i32>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{closure#0}
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call::<std::rt::lang_start_internal::{closure#0}, isize>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panicking.rs:581:40
+  20: std::panicking::catch_unwind::<isize, std::rt::lang_start_internal::{closure#0}>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panicking.rs:544:19
+  21: std::panic::catch_unwind::<std::rt::lang_start_internal::{closure#0}, isize>
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/6efa357bff60d192688e02de0c78cae24a7f3a55/library/std/src/rt.rs:171:5
+  23: main
+  24: <unknown>
+  25: __libc_start_main
+  26: <unknown>
     Checking desktop_pet v0.1.0 (/home/anotherone/Documents/Stuff with RUST/desktop_pet)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.19s

@@ -1,92 +1,15 @@
 use std::collections::HashMap;
 
+use crate::command_keywords::{
+    ARTISAN_SAD_SUFFIXES, ARTISAN_SERIOUS_SUFFIXES, CARGO_CURIOUS_SUFFIXES, CARGO_HAPPY_SUFFIXES,
+    CARGO_SERIOUS_SUFFIXES, COMPOSER_SAD_SUFFIXES, DESTRUCTIVE_COMMANDS, GIT_CURIOUS_SUFFIXES,
+    GIT_HAPPY_SUFFIXES, GIT_SERIOUS_SUFFIXES, LOOKING_AROUND_COMMANDS, PHP_COMMANDS,
+    PIP_ANGRY_SUFFIXES, POETRY_ANGRY_SUFFIXES, PYTHON_COMMANDS, ROUTINE_COMMANDS, RUST_COMMANDS,
+    SERIOUS_COMMANDS, TIME_QUENSTION_KEYWORDS, WRAPPER_COMMANDS,
+};
+use chrono::{Local, Timelike};
 use colored::Colorize;
 use serde::Deserialize;
-
-static LOOKING_AROUND_COMMANDS: &[&str] = &[
-    "ls", "ll", "la", "pwd", "cd", "tree", "find", "locate", "which", "whereis", "file", "stat",
-    "du", "df", "dirname", "basename", "realpath", "readlink", "cat", "less", "more", "head",
-    "tail", "grep", "rg", "fd", "eza", "exa", "bat", "nl", "tac", "wc", "mount", "lsblk", "blkid",
-    "lsof", "ps", "top", "htop", "pgrep", "env", "printenv", "history", "alias", "type", "id",
-    "uname", "hostname", "whoami",
-];
-static ROUTINE_COMMANDS: &[&str] = &[
-    "mkdir", "touch", "cp", "mv", "echo", "clear", "sleep", "true", "false",
-];
-static WRAPPER_COMMANDS: &[&str] = &["sudo", "command", "builtin", "nohup", "time"];
-static RUST_COMMANDS: &[&str] = &["cargo", "rustc", "rustfmt", "cargo-watch", "clippy-driver"];
-static PYTHON_COMMANDS: &[&str] = &["python", "python3", "pip", "pip3", "pytest", "poetry"];
-static PHP_COMMANDS: &[&str] = &["php", "composer", "artisan"];
-static DESTRUCTIVE_COMMANDS: &[&str] = &[
-    "rm", "rmdir", "kill", "pkill", "killall", "dd", "mkfs", "shutdown", "reboot",
-];
-static SERIOUS_COMMANDS: &[&str] = &[
-    "git",
-    "docker",
-    "docker-compose",
-    "kubectl",
-    "ssh",
-    "scp",
-    "rsync",
-    "chmod",
-    "chown",
-    "systemctl",
-    "service",
-    "make",
-    "cmake",
-    "apt",
-    "apt-get",
-    "dnf",
-    "pacman",
-    "brew",
-    "nix",
-];
-static GIT_HAPPY_SUFFIXES: &[&str] = &["add", "commit", "push", "merge", "rebase", "tag", "stash"];
-static GIT_SERIOUS_SUFFIXES: &[&str] = &[
-    "pull",
-    "clone",
-    "fetch",
-    "checkout",
-    "switch",
-    "restore",
-    "reset",
-    "cherry-pick",
-    "bisect",
-];
-static GIT_CURIOUS_SUFFIXES: &[&str] = &[
-    "status", "diff", "log", "show", "blame", "branch", "remote", "grep",
-];
-static CARGO_HAPPY_SUFFIXES: &[&str] = &[
-    "build", "check", "test", "run", "fmt", "clippy", "fix", "doc", "new",
-];
-static CARGO_SERIOUS_SUFFIXES: &[&str] = &[
-    "update",
-    "clean",
-    "install",
-    "uninstall",
-    "publish",
-    "vendor",
-    "bench",
-];
-static CARGO_CURIOUS_SUFFIXES: &[&str] = &["tree", "metadata", "search"];
-static PIP_ANGRY_SUFFIXES: &[&str] = &["install", "uninstall", "freeze", "list", "sync"];
-static POETRY_ANGRY_SUFFIXES: &[&str] = &["install", "update", "add", "remove", "run"];
-static COMPOSER_SAD_SUFFIXES: &[&str] = &[
-    "install",
-    "update",
-    "dump-autoload",
-    "require",
-    "remove",
-    "create-project",
-];
-static ARTISAN_SERIOUS_SUFFIXES: &[&str] = &["migrate", "queue:work", "schedule:run", "test"];
-static ARTISAN_SAD_SUFFIXES: &[&str] = &[
-    "serve",
-    "cache:clear",
-    "config:clear",
-    "route:clear",
-    "view:clear",
-];
 
 #[derive(Deserialize)]
 pub struct HookEvent {
@@ -236,6 +159,105 @@ fn effective_command_index(parts: &[&str]) -> Option<usize> {
     }
 
     None
+}
+
+fn normalized_keyword_chars(word: &str) -> Vec<char> {
+    word.chars()
+        .flat_map(|character| character.to_lowercase())
+        .filter(|character| character.is_alphanumeric())
+        .collect()
+}
+
+fn fluffy_keyword_matching(left: &str, right: &str) -> f32 {
+    let left = normalized_keyword_chars(left);
+    let right = normalized_keyword_chars(right);
+
+    if left.is_empty() && right.is_empty() {
+        return 1.0;
+    }
+
+    if left.is_empty() || right.is_empty() {
+        return 0.0;
+    }
+
+    let mut previous_row: Vec<usize> = (0..=right.len()).collect();
+    let mut current_row = vec![0; right.len() + 1];
+
+    for (left_index, left_character) in left.iter().enumerate() {
+        current_row[0] = left_index + 1;
+
+        for (right_index, right_character) in right.iter().enumerate() {
+            let substitution_cost = usize::from(left_character != right_character);
+            let insertion = current_row[right_index] + 1;
+            let deletion = previous_row[right_index + 1] + 1;
+            let substitution = previous_row[right_index] + substitution_cost;
+
+            current_row[right_index + 1] = insertion.min(deletion).min(substitution);
+        }
+
+        std::mem::swap(&mut previous_row, &mut current_row);
+    }
+
+    let distance = previous_row[right.len()];
+    let longest_word = left.len().max(right.len()) as f32;
+
+    (1.0 - distance as f32 / longest_word).max(0.0)
+}
+
+fn fluffy_keyword_finding(text: &str) -> Vec<&'static str> {
+    const FLUFFY_KEYWORD_THRESHOLD: f32 = 0.75;
+    let mut matched_keywords = Vec::new();
+
+    for word in text
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+    {
+        if let Some((keyword, _)) = TIME_QUENSTION_KEYWORDS
+            .iter()
+            .map(|keyword| (*keyword, fluffy_keyword_matching(word, keyword)))
+            .filter(|(_, similarity)| *similarity >= FLUFFY_KEYWORD_THRESHOLD)
+            .max_by(|left, right| left.1.total_cmp(&right.1))
+        {
+            if !matched_keywords.contains(&keyword) {
+                matched_keywords.push(keyword);
+            }
+        }
+    }
+
+    matched_keywords
+}
+
+fn is_time_question(text: &str) -> bool {
+    let matched_keywords = fluffy_keyword_finding(text);
+
+    matched_keywords.contains(&"time") || matched_keywords.len() >= TIME_QUENSTION_KEYWORDS.len()
+}
+
+fn build_time_response(formatted_time: &str, hour: u32) -> String {
+    let mut lines = vec![format!("The current time is {formatted_time} :3")];
+
+    if hour < 5 || hour >= 22 {
+        lines.push("It is already pretty late.".to_string());
+        lines.push("You should probably get some sleep soon :3".to_string());
+    } else if hour < 9 {
+        lines.push("It is still early in the morning.".to_string());
+        lines.push("Hope the day starts gently for you :3".to_string());
+    }
+
+    lines.join("\n")
+}
+
+fn attempt_conversation(event: &HookEvent) -> String {
+    let text = event.text.as_deref().unwrap_or("");
+
+    if is_time_question(text) {
+        let now = Local::now();
+        let formatted_time = now.format("%H:%M").to_string();
+
+        return build_time_response(&formatted_time, now.hour());
+    }
+
+    "heh".to_string()
 }
 
 impl PetResponce {
@@ -397,7 +419,76 @@ impl PetResponce {
         "WIP".to_string()
     }
 
-    fn evaluate_messege(_events: &[HookEvent]) -> String {
+    fn evaluate_messege(events: &[HookEvent]) -> String {
+        for event in events {
+            let parts = command_parts(&event.command);
+            if parts.is_empty() {
+                continue;
+            }
+
+            match parts[0] {
+                "echo" => {
+                    if let Some(output_event) = events
+                        .iter()
+                        .find(|event| matches!(event.kind, HookKind::Output))
+                    {
+                        return attempt_conversation(output_event);
+                    }
+                }
+                _ => {}
+            }
+        }
+
         "HELLO".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_time_response, fluffy_keyword_finding, fluffy_keyword_matching, is_time_question,
+    };
+
+    #[test]
+    fn fluffy_keyword_matching_scores_small_word_changes_as_close() {
+        assert!(fluffy_keyword_matching("What", "Whats") >= 0.8);
+    }
+
+    #[test]
+    fn fluffy_keyword_matching_scores_unrelated_words_as_distant() {
+        assert!(fluffy_keyword_matching("Bread", "Ai") < 0.3);
+    }
+
+    #[test]
+    fn fluffy_keyword_finding_collects_distinct_time_keywords() {
+        let matches = fluffy_keyword_finding("Whats the time right now?");
+
+        assert!(matches.contains(&"what"));
+        assert!(matches.contains(&"time"));
+    }
+
+    #[test]
+    fn is_time_question_requires_more_than_a_lonely_what() {
+        assert!(!is_time_question("what bread"));
+        assert!(is_time_question("what time is it"));
+        assert!(is_time_question("time?"));
+    }
+
+    #[test]
+    fn build_time_response_adds_late_night_lines() {
+        let message = build_time_response("23:48", 23);
+
+        assert!(message.contains("The current time is 23:48 :3"));
+        assert!(message.contains("pretty late"));
+        assert!(message.contains("sleep soon"));
+    }
+
+    #[test]
+    fn build_time_response_adds_early_morning_lines() {
+        let message = build_time_response("06:15", 6);
+
+        assert!(message.contains("The current time is 06:15 :3"));
+        assert!(message.contains("early in the morning"));
+        assert!(message.contains("starts gently"));
     }
 }

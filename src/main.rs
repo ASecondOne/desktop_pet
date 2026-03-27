@@ -7,6 +7,7 @@ use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 
+mod command_keywords;
 mod handle_event;
 
 use handle_event::HookEvent;
