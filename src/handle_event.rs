@@ -32,6 +32,13 @@ pub struct PetResponce {
     messge: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct PetDisplay {
+    emotion: Emotion,
+    detail: String,
+    message: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum HookKind {
@@ -41,7 +48,7 @@ enum HookKind {
 }
 
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq)]
-enum Emotion {
+pub enum Emotion {
     HAPPY,
     SAD,
     ANGRY,
@@ -60,6 +67,54 @@ impl Emotion {
             Emotion::COURIOUS,
             Emotion::NEUTRAL,
         ]
+    }
+
+    pub fn asset_key(self) -> &'static str {
+        match self {
+            Emotion::HAPPY => "HAPPY",
+            Emotion::SAD => "SAD",
+            Emotion::ANGRY => "ANGRY",
+            Emotion::SERIOUS => "SERIOUS",
+            Emotion::COURIOUS => "CURIOUS",
+            Emotion::NEUTRAL => "NEUTRAL",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Emotion::HAPPY => "Happy",
+            Emotion::SAD => "Sad",
+            Emotion::ANGRY => "Angry",
+            Emotion::SERIOUS => "Serious",
+            Emotion::COURIOUS => "Curious",
+            Emotion::NEUTRAL => "Neutral",
+        }
+    }
+}
+
+impl PetDisplay {
+    pub fn idle() -> PetDisplay {
+        PetDisplay {
+            emotion: Emotion::HAPPY,
+            detail: "Waiting for you to talk to me...".to_string(),
+            message: "Try `echo what time is it` in one of your hooked terminals.".to_string(),
+        }
+    }
+
+    pub fn emotion(&self) -> Emotion {
+        self.emotion
+    }
+
+    pub fn emotion_label(&self) -> &'static str {
+        self.emotion.label()
+    }
+
+    pub fn detail(&self) -> &str {
+        &self.detail
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
     }
 }
 
@@ -124,6 +179,14 @@ impl HookEvent {
 
     pub fn command_id(&self) -> &str {
         &self.command_id
+    }
+
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    pub fn text(&self) -> Option<&str> {
+        self.text.as_deref()
     }
 }
 
@@ -262,10 +325,12 @@ fn attempt_conversation(event: &HookEvent) -> String {
 
 impl PetResponce {
     pub fn new(events: Vec<HookEvent>) -> PetResponce {
+        let emotion = PetResponce::evaluate_emotion(&events);
+
         PetResponce {
-            emotion: PetResponce::evaluate_emotion(&events),
-            action: PetResponce::evaluate_action(&events),
-            messge: PetResponce::evaluate_messege(&events),
+            emotion,
+            action: PetResponce::evaluate_action(emotion),
+            messge: PetResponce::evaluate_messege(&events, emotion),
             events,
         }
     }
@@ -277,6 +342,20 @@ impl PetResponce {
     pub fn show(&self) -> String {
         let _event_count = self.events().len();
         format!("{:?} {} \n {}", self.emotion, self.action, self.messge)
+    }
+
+    pub fn display(&self) -> PetDisplay {
+        let detail = if let Some(heard_text) = self.heard_text() {
+            format!("You said: {heard_text}")
+        } else {
+            format!("Last command: {}", self.primary_command())
+        };
+
+        PetDisplay {
+            emotion: self.emotion,
+            detail,
+            message: self.messge.clone(),
+        }
     }
 
     fn evaluate_emotion(events: &[HookEvent]) -> Emotion {
@@ -415,18 +494,25 @@ impl PetResponce {
         highest_emotion
     }
 
-    fn evaluate_action(_events: &[HookEvent]) -> String {
-        "WIP".to_string()
+    fn evaluate_action(emotion: Emotion) -> String {
+        match emotion {
+            Emotion::HAPPY => "tail wagging".to_string(),
+            Emotion::SAD => "looking droopy".to_string(),
+            Emotion::ANGRY => "huffing".to_string(),
+            Emotion::SERIOUS => "watching closely".to_string(),
+            Emotion::COURIOUS => "leaning in".to_string(),
+            Emotion::NEUTRAL => "idling".to_string(),
+        }
     }
 
-    fn evaluate_messege(events: &[HookEvent]) -> String {
+    fn evaluate_messege(events: &[HookEvent], emotion: Emotion) -> String {
         for event in events {
             let parts = command_parts(&event.command);
-            if parts.is_empty() {
+            let Some(command_index) = effective_command_index(&parts) else {
                 continue;
-            }
+            };
 
-            match parts[0] {
+            match parts[command_index] {
                 "echo" => {
                     if let Some(output_event) = events
                         .iter()
@@ -439,7 +525,59 @@ impl PetResponce {
             }
         }
 
-        "HELLO".to_string()
+        build_command_response(events, emotion)
+    }
+
+    fn heard_text(&self) -> Option<String> {
+        for event in &self.events {
+            let parts = command_parts(event.command());
+            let Some(command_index) = effective_command_index(&parts) else {
+                continue;
+            };
+
+            if parts[command_index] == "echo"
+                && let Some(output_event) = self
+                    .events
+                    .iter()
+                    .find(|candidate| matches!(candidate.kind, HookKind::Output))
+                && let Some(text) = output_event.text()
+            {
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn primary_command(&self) -> &str {
+        self.events
+            .first()
+            .map(HookEvent::command)
+            .unwrap_or("something mysterious")
+    }
+}
+
+fn build_command_response(events: &[HookEvent], emotion: Emotion) -> String {
+    let command = events
+        .first()
+        .map(HookEvent::command)
+        .unwrap_or("something mysterious");
+    let exit_code = events.iter().find_map(|event| event.exit_code);
+
+    match exit_code {
+        Some(0) => match emotion {
+            Emotion::HAPPY => format!("`{command}` finished cleanly. Nice."),
+            Emotion::SAD => format!("`{command}` is done. I hope that helped."),
+            Emotion::ANGRY => format!("`{command}` is over now. I can unclench a bit."),
+            Emotion::SERIOUS => format!("`{command}` completed. Staying focused."),
+            Emotion::COURIOUS => format!("I watched `{command}` closely."),
+            Emotion::NEUTRAL => format!("`{command}` finished."),
+        },
+        Some(code) => format!("`{command}` ended with exit code {code}."),
+        None => format!("I noticed `{command}`."),
     }
 }
 

@@ -6,12 +6,18 @@ use std::io::{BufRead, BufReader};
 use std::os::unix::fs::FileTypeExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Sender};
+use std::thread;
 
 mod command_keywords;
 mod handle_event;
+mod pet_ui;
 
+use eframe::egui;
 use handle_event::HookEvent;
+use handle_event::PetDisplay;
 use handle_event::PetResponce;
+use pet_ui::PetApp;
 
 static DEBUG: bool = false;
 
@@ -42,27 +48,52 @@ fn main() {
 fn run() -> Result<(), Box<dyn Error>> {
     let socket_path = parse_socket_path(env::args_os().skip(1))?;
     prepare_socket_path(&socket_path)?;
-    let mut pending_events: HashMap<String, Vec<HookEvent>> = HashMap::new();
-
     let listener = UnixListener::bind(&socket_path)?;
     let _socket_guard = SocketGuard {
         path: socket_path.clone(),
     };
+    let (display_sender, display_receiver) = mpsc::channel();
 
     print_startup(&socket_path)?;
+    start_listener(listener, display_sender);
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                if let Err(error) = handle_client(stream, &mut pending_events) {
-                    eprintln!("desktop_pet: failed to read an event: {error}");
-                }
-            }
-            Err(error) => eprintln!("desktop_pet: accept failed: {error}"),
-        }
-    }
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_position(egui::pos2(0.0, 0.0))
+            .with_inner_size(egui::vec2(340.0, 430.0))
+            .with_min_inner_size(egui::vec2(340.0, 430.0))
+            .with_max_inner_size(egui::vec2(340.0, 430.0))
+            .with_resizable(false)
+            .with_always_on_top()
+            .with_decorations(false),
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "desktop_pet",
+        native_options,
+        Box::new(move |_creation_context| Ok(Box::new(PetApp::new(display_receiver)))),
+    )?;
 
     Ok(())
+}
+
+fn start_listener(listener: UnixListener, display_sender: Sender<PetDisplay>) {
+    thread::spawn(move || {
+        let mut pending_events: HashMap<String, Vec<HookEvent>> = HashMap::new();
+
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    if let Err(error) = handle_client(stream, &mut pending_events, &display_sender)
+                    {
+                        eprintln!("desktop_pet: failed to read an event: {error}");
+                    }
+                }
+                Err(error) => eprintln!("desktop_pet: accept failed: {error}"),
+            }
+        }
+    });
 }
 
 fn parse_socket_path<I>(mut args: I) -> Result<PathBuf, Box<dyn Error>>
@@ -132,6 +163,7 @@ fn print_startup(socket_path: &Path) -> Result<(), Box<dyn Error>> {
     println!(
         "default mode mirrors stdout/stderr for ordinary commands and leaves interactive ones alone"
     );
+    println!("pet reactions now stay in the desktop widget instead of printing command summaries");
     println!("optional: export DESKTOP_PET_CAPTURE_OUTPUT=off for strict low-impact mode");
     println!(
         "optional: export DESKTOP_PET_CAPTURE_OUTPUT=always to mirror stdout/stderr for every command"
@@ -152,6 +184,7 @@ fn print_startup(socket_path: &Path) -> Result<(), Box<dyn Error>> {
 fn handle_client(
     stream: UnixStream,
     pending_events: &mut HashMap<String, Vec<HookEvent>>,
+    display_sender: &Sender<PetDisplay>,
 ) -> Result<(), Box<dyn Error>> {
     let reader = BufReader::new(stream);
 
@@ -177,7 +210,10 @@ fn handle_client(
 
                 if is_finish && let Some(events) = pending_events.remove(&command_id) {
                     let res = PetResponce::new(events);
-                    println!("{}", res.show());
+                    if DEBUG {
+                        println!("{}", res.show());
+                    }
+                    let _ = display_sender.send(res.display());
                 }
             }
             Err(error) => eprintln!("desktop_pet: invalid event payload: {error}"),
